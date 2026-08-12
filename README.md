@@ -78,6 +78,8 @@ location /pretty-print/ {
 | `FETCH_TIMEOUT_MS` | `30000` | Per-fetch timeout sent to Browser Use. |
 | `FETCH_ALLOW_HEADLESS` | `false` | Enable the headless-Chromium fallback (needs `playwright` + `playwright install chromium`). |
 | `FETCH_SEQUENCE_TIMEOUT` | `90` | Outer bound for the whole fetch sequence, seconds. |
+| `RATE_LIMIT_PER_MINUTE` | `20` | Per-IP cap on `POST /print` over the trailing window. |
+| `RATE_LIMIT_WINDOW_SECONDS` | `60` | Trailing window (seconds) the cap above applies over. |
 
 ## Rebuilding Tailwind CSS
 
@@ -120,3 +122,8 @@ renders the extracted result with `| safe` for anyone who later opens
   conversion — is passed through an `lxml.html.clean.Cleaner` allowlist
   (`app/services/extractor.py:sanitize_html`) that strips scripts, event
   handler attributes, `javascript:` links, and inline styles before storage.
+- **Abuse / cost control**: `POST /print` — the only route that can call the
+  paid Browser Use API or fetch an arbitrary URL — is capped per IP
+  (`RATE_LIMIT_PER_MINUTE` hits per `RATE_LIMIT_WINDOW_SECONDS`, default 20/60s).
+  Hits are recorded in SQLite rather than in-process memory so the limit holds
+  across gunicorn's worker processes; old hits are pruned automatically.

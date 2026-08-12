@@ -21,3 +21,17 @@ CREATE TABLE IF NOT EXISTS documents (
 );
 
 CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents (created_at);
+
+-- One row per rate-limited request, used to throttle abuse of expensive
+-- routes (POST /print, which can call the paid Browser Use API and fetch
+-- arbitrary URLs). Hits older than the limiting window are pruned as new
+-- ones are recorded, so this stays small. A plain table (rather than an
+-- in-process counter) so the limit is enforced consistently across all
+-- gunicorn workers, which don't share memory.
+CREATE TABLE IF NOT EXISTS rate_limit_hits (
+    ip TEXT NOT NULL,
+    route TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_rate_limit_hits_route_ip_time ON rate_limit_hits (route, ip, created_at);

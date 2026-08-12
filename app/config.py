@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     # Outer bound on the whole fetch sequence (seconds).
     fetch_sequence_timeout: int = 90
 
+    # Per-IP cap on POST /print (the route that can call the paid Browser Use
+    # API and fetch arbitrary URLs), enforced over a trailing window.
+    rate_limit_per_minute: int = 20
+    rate_limit_window_seconds: int = 60
+
 
 def get_settings() -> Settings:
     # Not cached: this app runs a single gunicorn worker and Settings() is cheap

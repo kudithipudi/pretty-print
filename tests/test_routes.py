@@ -81,6 +81,17 @@ def test_print_paper_param(client, fake_fetcher):
     assert "size: A4" in client.get("/d/1?paper=weird").text
 
 
+def test_print_rate_limited_per_ip(client, fake_fetcher, monkeypatch):
+    monkeypatch.setenv("RATE_LIMIT_PER_MINUTE", "2")
+    fake_fetcher()
+
+    assert _print_one(client, "https://example.com/1").status_code == 303
+    assert _print_one(client, "https://example.com/2").status_code == 303
+    resp = _print_one(client, "https://example.com/3")
+    assert resp.status_code == 429
+    assert "Too many requests" in resp.text
+
+
 def test_history_lists_saved_docs(client, fake_fetcher):
     fake_fetcher()
     _print_one(client)

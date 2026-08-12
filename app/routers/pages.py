@@ -3,7 +3,8 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.config import get_settings
-from app.db import get_document, get_db, list_documents, save_document
+from app.db import (check_and_record_rate_limit, get_document, get_db,
+                     list_documents, save_document)
 from app.services.fetcher import FetchError, fetch_and_normalize
 
 router = APIRouter()
@@ -11,6 +12,10 @@ templates = Jinja2Templates(directory="app/templates")
 templates.env.globals["prefix"] = get_settings().root_path
 
 MAX_HISTORY_ITEMS = 100
+
+
+def _client_ip(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
 
 
 @router.get("/")
@@ -31,6 +36,23 @@ async def create_printable(
 ):
     """Fetch a URL, stash a printable copy in history, and open the print view."""
     settings = get_settings()
+
+    allowed = await check_and_record_rate_limit(
+        db,
+        ip=_client_ip(request),
+        route="print",
+        limit=settings.rate_limit_per_minute,
+        window_seconds=settings.rate_limit_window_seconds,
+    )
+    if not allowed:
+        recent = await list_documents(db, limit=8)
+        return templates.TemplateResponse(
+            request,
+            "index.html",
+            {"recent": recent, "error": "Too many requests — please slow down and try again in a minute.", "url": url},
+            status_code=429,
+        )
+
     try:
         result = await fetch_and_normalize(url, settings)
     except FetchError as exc:

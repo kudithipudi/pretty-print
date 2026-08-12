@@ -20,11 +20,46 @@ import re
 from html import escape
 
 from lxml import etree, html as lxml_html
+from lxml.html.clean import Cleaner
 from markdown import markdown
 from markdownify import markdownify
 from readability import Document
 
 logger = logging.getLogger(__name__)
+
+# Any HTML fragment stored and later rendered with `| safe` must be sanitized
+# first: extracted articles carry the source site's markup verbatim (event
+# handler attributes, javascript: links, etc.), and this app has no auth —
+# every visitor to /d/{id} and /history executes whatever survives here.
+_cleaner = Cleaner(
+    scripts=True,
+    javascript=True,
+    comments=True,
+    style=True,
+    inline_style=True,
+    links=False,
+    meta=True,
+    page_structure=True,
+    processing_instructions=True,
+    embedded=True,
+    frames=True,
+    forms=True,
+    annoying_tags=True,
+    remove_unknown_tags=False,
+    safe_attrs_only=True,
+)
+
+
+def sanitize_html(fragment: str) -> str:
+    """Strip anything in an HTML fragment that could execute on render."""
+    if not fragment or not fragment.strip():
+        return fragment
+    try:
+        return _cleaner.clean_html(fragment)
+    except Exception:
+        logger.warning("HTML sanitization failed; dropping fragment", exc_info=True)
+        return ""
+
 
 # Content we cannot sensibly print.
 UNSUPPORTED_TYPES = {
@@ -151,7 +186,7 @@ def extract_html(html: str, fallback_source: str = "") -> tuple[str, str, str]:
         frag = extract_from_article_element(article_root)
         if _plain_len(frag) >= _ARTICLE_MIN_LEN:
             title = _page_title(html)
-            return "html", frag, title
+            return "html", sanitize_html(frag), title
         tried_fragments.append(frag)
 
     # No trustworthy <article>: fall back to whole-document readability.
@@ -165,10 +200,10 @@ def extract_html(html: str, fallback_source: str = "") -> tuple[str, str, str]:
 
     for frag in tried_fragments:
         if frag and _plain_len(frag) >= _ARTICLE_MIN_LEN // 2:
-            return "html", frag, t
+            return "html", sanitize_html(frag), t
 
     if len(summary) >= 120:
-        return "html", summary, t or title
+        return "html", sanitize_html(summary), t or title
 
     body_text = clean_html_to_text(html)
     if not body_text:
@@ -184,12 +219,17 @@ def _page_title(html: str) -> str:
 
 
 def markdown_to_html(md: str) -> str:
-    """Convert markdown (e.g. from browser-use fetch-use) to a clean HTML fragment."""
-    return markdown(
+    """Convert markdown (e.g. from browser-use fetch-use) to a clean HTML fragment.
+
+    python-markdown passes raw HTML embedded in the source through unescaped,
+    so the result still needs sanitizing before it's safe to render.
+    """
+    html_out = markdown(
         md,
         extensions=["fenced_code", "tables", "sane_lists"],
         output_format="html",
     )
+    return sanitize_html(html_out)
 
 
 def escape_text(text: str) -> str:

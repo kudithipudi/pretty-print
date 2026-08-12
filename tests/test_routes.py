@@ -1,5 +1,7 @@
-from app.services.fetcher import FetchError, FetchResult
-from app.services.fetcher import validate_url
+import pytest
+
+from app.services.fetcher import (FetchError, FetchResult, _fetch_httpx,
+                                   _is_public_ip, validate_url)
 
 
 # --- public pages (smoke tests) ------------------------------------------
@@ -142,3 +144,26 @@ def test_validate_url_rejects_bad_schemes():
         except FetchError:
             continue
         raise AssertionError(f"expected FetchError for {bad!r}")
+
+
+# --- SSRF guard -----------------------------------------------------------
+
+
+def test_is_public_ip():
+    assert _is_public_ip("93.184.216.34") is True  # example.com
+    assert _is_public_ip("127.0.0.1") is False
+    assert _is_public_ip("10.0.0.5") is False
+    assert _is_public_ip("192.168.1.1") is False
+    assert _is_public_ip("169.254.169.254") is False  # cloud metadata
+    assert _is_public_ip("::1") is False
+    assert _is_public_ip("not-an-ip") is False
+
+
+async def test_fetch_httpx_blocks_loopback_target():
+    with pytest.raises(FetchError, match="private or internal"):
+        await _fetch_httpx("http://127.0.0.1:22/")
+
+
+async def test_fetch_httpx_blocks_localhost_hostname():
+    with pytest.raises(FetchError, match="private or internal"):
+        await _fetch_httpx("http://localhost/")

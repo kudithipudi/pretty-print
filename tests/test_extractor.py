@@ -1,6 +1,7 @@
 import re
 
-from app.services.extractor import (extract_html, plain_text_block,
+from app.services.extractor import (extract_html, markdown_to_html,
+                                     plain_text_block, sanitize_html,
                                      sniff_content_type)
 
 HTML_WITH_ARTICLE = """<!DOCTYPE html>
@@ -65,6 +66,39 @@ def test_plain_text_block():
     block = plain_text_block("line1\nline2")
     assert '<pre class="print-text">' in block
     assert "line1\nline2" in block
+
+
+def test_extract_article_strips_event_handlers_and_js_links():
+    """Stored HTML is later rendered with `| safe` with no auth in front of
+    it, so a malicious source page must not be able to plant script that
+    fires on any later visitor viewing /d/{id} or /history."""
+    html = """<!DOCTYPE html><html><body><article>
+      <h1>Padding heading so this article clears the extraction length floor</h1>
+      <p onmouseover="alert(1)">Some paragraph text that is reasonably long to pass
+      the plain-text threshold check for extraction here, padded with extra words.</p>
+      <p><a href="javascript:alert(2)">click me</a> and more padding text so the
+      article body comfortably clears the minimum length required for extraction.</p>
+    </article></body></html>"""
+    ctype, content, _ = extract_html(html)
+    assert ctype == "html"
+    assert "onmouseover" not in content
+    assert "javascript:" not in content
+
+
+def test_sanitize_html_strips_script_and_style():
+    dirty = '<div><script>alert(1)</script><p style="color:red" onclick="x()">hi</p></div>'
+    clean = sanitize_html(dirty)
+    assert "<script" not in clean
+    assert "onclick" not in clean
+    assert "style=" not in clean
+    assert "hi" in clean
+
+
+def test_markdown_to_html_strips_embedded_raw_html():
+    md = "# Title\n\nSome text.\n\n<img src=x onerror=alert(1)>\n\n<script>alert(2)</script>"
+    html = markdown_to_html(md)
+    assert "onerror" not in html
+    assert "<script" not in html
 
 
 def test_simple_html_via_readability():

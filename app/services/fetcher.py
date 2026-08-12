@@ -16,15 +16,17 @@ HTML fragment or escaped text block.
 """
 
 import asyncio
+import ipaddress
 import logging
+import socket
 import urllib.parse
 from dataclasses import dataclass
 
 import httpx
 
 from app.config import Settings
-from app.services.extractor import (extract_html, plain_text_block,
-                                     sniff_content_type)
+from app.services.extractor import (extract_html, markdown_to_html,
+                                     plain_text_block, sniff_content_type)
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +56,42 @@ def validate_url(url: str) -> str:
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         raise FetchError("Please enter a valid http(s) URL.")
     return url.strip()
+
+
+def _is_public_ip(ip_str: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return False
+    return not (
+        ip.is_private or ip.is_loopback or ip.is_link_local
+        or ip.is_multicast or ip.is_reserved or ip.is_unspecified
+    )
+
+
+def _resolve_ips_sync(hostname: str) -> list[str]:
+    try:
+        infos = socket.getaddrinfo(hostname, None)
+    except socket.gaierror:
+        return []
+    return list({info[4][0] for info in infos})
+
+
+async def _assert_public_host(url: str) -> None:
+    """Block fetches whose hostname resolves to a loopback/private/link-local
+    address. httpx and the headless browser make the request straight from
+    this server, and the tool is public with no auth, so without this check
+    anyone could use it to probe the internal network or cloud metadata
+    endpoints (e.g. 169.254.169.254). browser_use is exempt: that fetch runs
+    on Browser Use's infrastructure, not this network."""
+    hostname = urllib.parse.urlparse(url).hostname
+    if not hostname:
+        raise FetchError("Please enter a valid http(s) URL.")
+    ips = await asyncio.to_thread(_resolve_ips_sync, hostname)
+    if not ips:
+        raise FetchError("Could not resolve host.")
+    if not all(_is_public_ip(ip) for ip in ips):
+        raise FetchError("URLs pointing to private or internal addresses are not allowed.")
 
 
 async def fetch_and_normalize(url: str, settings: Settings) -> FetchResult:
@@ -131,15 +169,13 @@ async def _fetch_browser_use(url: str, settings: Settings) -> FetchResult:
         raise FetchError("Empty response body from Browser-Use.")
 
     if settings.browser_use_output_format == "markdown":
-        from markdown import markdown
-
         title = _guess_title_from_markdown(body, url)
         return FetchResult(
             final_url=response.url or url,
             title=title,
             source="browser_use",
             content_type="html",
-            content=markdown(body, extensions=["fenced_code", "tables", "sane_lists"]),
+            content=markdown_to_html(body),
         )
 
     ctype = sniff_content_type(response.headers.get("content-type", ""), body)
@@ -155,6 +191,7 @@ async def _fetch_browser_use(url: str, settings: Settings) -> FetchResult:
 
 
 async def _fetch_httpx(url: str) -> FetchResult:
+    await _assert_public_host(url)
     async with httpx.AsyncClient(
         follow_redirects=True,
         timeout=httpx.Timeout(30.0),
@@ -182,6 +219,7 @@ async def _fetch_headless(url: str) -> FetchResult:
     browser, and pages that block plain HTTP clients."""
     from playwright.async_api import async_playwright
 
+    await _assert_public_host(url)
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         try:

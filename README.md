@@ -102,3 +102,21 @@ Alpine.js is vendored (pinned 3.14.9) at `app/static/js/alpine.min.js`.
 Extraction: `readability-lxml` pulls the main article out of HTML; if no
 article is found (or it's too short) the page is converted to plain text so
 there is still something printable.
+
+## Security notes
+
+This tool is public with no auth, fetches arbitrary user-supplied URLs, and
+renders the extracted result with `| safe` for anyone who later opens
+`/d/{id}` or `/history` — so two classes of risk get explicit guards:
+
+- **SSRF**: before the `httpx` or `headless` backends (which run on this
+  server) connect, the target hostname is resolved and rejected if any
+  resolved address is loopback/private/link-local/reserved (e.g. cloud
+  metadata at `169.254.169.254`). `browser_use` is exempt since that request
+  runs on Browser Use's infrastructure, not this network. Note: redirects
+  followed after the check are not re-validated per hop.
+- **Stored XSS**: every HTML fragment that ends up in the DB — from article
+  extraction, readability's whole-document fallback, or markdown-to-HTML
+  conversion — is passed through an `lxml.html.clean.Cleaner` allowlist
+  (`app/services/extractor.py:sanitize_html`) that strips scripts, event
+  handler attributes, `javascript:` links, and inline styles before storage.

@@ -5,12 +5,21 @@ raw payload; these helpers turn that payload into:
   * content_type == "html"  -> a cleaned article HTML fragment
   * content_type == "text"  -> an escaped <pre> block
 Either way the result is safe to render with |safe in a Jinja2 template.
+
+Extraction strategy, in order:
+  1. If the page has one or more <article> elements, rebuild the largest one
+     from its meaningful blocks (headings, paragraphs, lists, quotes, code,
+     tables). This is what makes news sites like the BBC come out whole —
+     whole-document readability often loses to a "related articles" rail.
+  2. Otherwise run readability-lxml over the whole document.
+  3. If neither yields a usable article, convert the page body to plain text.
 """
 
 import logging
 import re
 from html import escape
 
+from lxml import etree, html as lxml_html
 from markdown import markdown
 from markdownify import markdownify
 from readability import Document
@@ -24,7 +33,23 @@ UNSUPPORTED_TYPES = {
     "application/zip": "Binary content is not supported.",
 }
 
-# content-type sniffing: strip parameters and lowercase.
+# Blocks inside an <article> that are meaningful for print.
+_ARTICLE_BLOCK_TAGS = {
+    "h1", "h2", "h3", "h4", "h5", "h6",
+    "p", "ul", "ol", "blockquote", "pre", "table", "hr", "img",
+}
+
+# Sub-trees that should never end up on paper.
+_NOISE_TAGS = {
+    "script", "style", "noscript", "iframe", "svg", "canvas", "video",
+    "audio", "form", "button", "input", "select", "textarea", "nav",
+    "aside", "footer", "figcaption",
+}
+
+# Minimum plain-text length before we trust a targeted <article> extraction.
+_ARTICLE_MIN_LEN = 200
+
+
 def _ctype(header_value: str | None) -> str:
     if not header_value:
         return ""
@@ -50,7 +75,7 @@ def sniff_content_type(header_value: str | None, body: str) -> str | None:
 
 
 def clean_html_to_text(html: str) -> str:
-    """Fallback for when readability finds no article: convert an HTML blob to
+    """Fallback for when nothing extractable is found: convert an HTML blob to
     plain markdown-text so we still print something useful."""
     try:
         return markdownify(html, heading_style="ATX", strip=["img", "figure", "script", "noscript", "style", "svg", "iframe"]).strip()
@@ -59,40 +84,112 @@ def clean_html_to_text(html: str) -> str:
         return re.sub(r"<[^>]+>\s*", " ", html)
 
 
-def extract_html(html: str, fallback_source: str = "") -> tuple[str, str, str]:
-    """Return (content_type, content, title or '') for an HTML payload.
+def _article_elements(html: str) -> list:
+    """Parse the page and return each <article> element (in document order)."""
+    try:
+        root = lxml_html.fromstring(html)
+    except Exception:
+        return []
+    return root.xpath("//article")
 
-    Uses readability-lxml to pull out the main article. If that yields nothing
-    useful, falls back to a markdownified, boilerplate-free version of the body.
-    """
+
+def _plain_len(fragment: str) -> int:
+    return len(re.sub(r"<[^>]+>", " ", fragment).strip())
+
+
+def extract_from_article_element(article_root) -> str:
+    """Rebuild a print-friendly HTML fragment from one <article> element,
+    keeping only meaningful blocks with their inline formatting."""
+    # Drop noise sub-trees first.
+    for tag in _NOISE_TAGS:
+        for el in article_root.xpath(f".//{tag}"):
+            parent = el.getparent()
+            if parent is not None:
+                parent.remove(el)
+
+    keep: list = []
+    for el in article_root.iter():
+        if not isinstance(el.tag, str):
+            continue
+        if el.tag == "img":
+            src = el.get("src") or ""
+            alt = el.get("alt") or ""
+            if src.startswith("http"):
+                for k in list(el.attrib):
+                    del el.attrib[k]
+                if src:
+                    el.set("src", src)
+                if alt:
+                    el.set("alt", alt)
+                keep.append(el)
+            continue
+        if el.tag not in _ARTICLE_BLOCK_TAGS:
+            continue
+        if not el.text_content().strip():
+            continue
+        keep.append(el)
+
+    # Dedup: if an element is nested inside another kept element, drop the
+    # inner one (e.g. <li> inside a retained <ul>; <p> inside <blockquote>).
+    roots = [el for el in keep if not any(
+        el is not other and el in list(other.iter()) for other in keep
+    )]
+
+    container = etree.Element("div")
+    for el in roots:
+        container.append(el)
+    return lxml_html.tostring(container, encoding="unicode")
+
+
+def extract_html(html: str, fallback_source: str = "") -> tuple[str, str, str]:
+    """Return (content_type, content, title or '') for an HTML payload."""
+    title = ""
+    tried_fragments: list[str] = []
+
+    articles = _article_elements(html)
+    for article_root in articles:
+        frag = extract_from_article_element(article_root)
+        if _plain_len(frag) >= _ARTICLE_MIN_LEN:
+            title = _page_title(html)
+            return "html", frag, title
+        tried_fragments.append(frag)
+
+    # No trustworthy <article>: fall back to whole-document readability.
     try:
         doc = Document(html)
-        title = (doc.short_title() or "").strip()
+        t = (doc.short_title() or "").strip()
+        summary = (doc.summary() or "").strip()
     except Exception:
         logger.warning("readability failed to parse page", exc_info=True)
-        title = ""
-        summary = ""
-    else:
-        summary = (doc.summary() or "").strip()
+        t, summary = "", ""
+
+    for frag in tried_fragments:
+        if frag and _plain_len(frag) >= _ARTICLE_MIN_LEN // 2:
+            return "html", frag, t
 
     if len(summary) >= 120:
-        return "html", summary, title
+        return "html", summary, t or title
 
-    # No extractable article -> turn the whole page into plain text.
     body_text = clean_html_to_text(html)
     if not body_text:
         body_text = fallback_source or "No readable content found on this page."
-    return "text", escape_text(body_text), title
+    return "text", escape_text(body_text), t or title
+
+
+def _page_title(html: str) -> str:
+    try:
+        return (Document(html).short_title() or "").strip()
+    except Exception:
+        return ""
 
 
 def markdown_to_html(md: str) -> str:
     """Convert markdown (e.g. from browser-use fetch-use) to a clean HTML fragment."""
-    html = markdown(
+    return markdown(
         md,
         extensions=["fenced_code", "tables", "sane_lists"],
         output_format="html",
     )
-    return html
 
 
 def escape_text(text: str) -> str:

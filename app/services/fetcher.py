@@ -100,9 +100,16 @@ async def _fetch_sequence(url: str, settings: Settings) -> FetchResult:
 async def _fetch_browser_use(url: str, settings: Settings) -> FetchResult:
     """Delegate the fetch to Browser Use's cloud via the fetch-use SDK.
 
+    The SDK only reads BROWSER_USE_API_KEY from the process environment and
+    caches it on first use; we keep the secret in .env (pydantic-settings),
+    so mirror it into os.environ and reset the SDK's cache before each call.
     fetch_sync is blocking; run it off the event loop."""
-    from fetch_use import FetchError as BUError
-    from fetch_use import fetch_sync
+    import os
+
+    from fetch_use import clear_config_cache, fetch_sync
+
+    os.environ["BROWSER_USE_API_KEY"] = settings.browser_use_api_key
+    clear_config_cache()
 
     def _run():
         return fetch_sync(
@@ -111,14 +118,13 @@ async def _fetch_browser_use(url: str, settings: Settings) -> FetchResult:
             timeout_ms=settings.fetch_timeout_ms,
         )
 
+    response = None
     try:
         response = await asyncio.to_thread(_run)
         response.raise_for_status()
-    except BUError as exc:
-        raise FetchError(str(exc)) from exc
     except Exception as exc:
-        # raise_for_status on non-2xx surfaces an HTTPError.
-        raise FetchError(f"status {getattr(response, 'status_code', '?')}: {exc}") from exc
+        status = getattr(response, "status_code", None)
+        raise FetchError(f"Browser-Use HTTP {status}: {exc}") from exc
 
     body = response.text or ""
     if not body:

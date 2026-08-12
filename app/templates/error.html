@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Error — pretty-print{% endblock %}
+{% block body %}
+<section class="max-w-xl mx-auto text-center py-10">
+  <h1 class="text-3xl font-bold text-slate-900">{{ status_code }}</h1>
+  <p class="mt-2 text-slate-600">{{ detail }}</p>
+  <a href="{{ prefix }}/" class="mt-6 inline-flex rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-indigo-500">
+    &larr; Back home
+  </a>
+</section>
+{% endblock %}

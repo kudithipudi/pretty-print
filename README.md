@@ -87,10 +87,11 @@ location /pretty-print/ {
 
 ## Rebuilding Tailwind CSS
 
-Built with the lab standalone CLI into the committed `app/static/css/app.css`:
+Built with the standalone CLI (vendored at `./tailwindcss`) into the committed
+`app/static/css/app.css`:
 
 ```bash
-/var/www/tailwindcss \
+./tailwindcss \
   -i app/static/css/input.css \
   -o app/static/css/app.css --minify
 ```

@@ -17,6 +17,8 @@ Live at [https://lab.kudithipudi.org/pretty-print/](https://lab.kudithipudi.org/
   Chromium for JS-heavy pages.
 - Every successful fetch is saved to a SQLite **history** so you can re-print
   later without refetching.
+- A password-protected **admin** section at `/admin` (gated by `ADMIN_PASSWORD`,
+  session-cookie login) lets you delete documents from history.
 
 ## Stack
 
@@ -80,6 +82,8 @@ location /pretty-print/ {
 | `FETCH_SEQUENCE_TIMEOUT` | `90` | Outer bound for the whole fetch sequence, seconds. |
 | `RATE_LIMIT_PER_MINUTE` | `20` | Per-IP cap on `POST /print` over the trailing window. |
 | `RATE_LIMIT_WINDOW_SECONDS` | `60` | Trailing window (seconds) the cap above applies over. |
+| `ADMIN_PASSWORD` | *(empty)* | Password for the `/admin` section (delete history, etc.). Empty disables admin login. |
+| `SESSION_SECRET` | *(empty)* | Signs the admin session cookie; falls back to `ADMIN_PASSWORD`. Set a stable value — without it every restart logs the admin out. |
 
 ## Rebuilding Tailwind CSS
 
@@ -127,3 +131,8 @@ renders the extracted result with `| safe` for anyone who later opens
   (`RATE_LIMIT_PER_MINUTE` hits per `RATE_LIMIT_WINDOW_SECONDS`, default 20/60s).
   Hits are recorded in SQLite rather than in-process memory so the limit holds
   across gunicorn's worker processes; old hits are pruned automatically.
+- **Admin**: `/admin` and its state-changing actions (delete from history) are
+  gated by a session cookie set only after a correct `ADMIN_PASSWORD`
+  (`secrets.compare_digest`), signed with `SESSION_SECRET`. The admin session
+  is confined to the app's own routes; the cookie uses the default path since
+  nginx strips the `/pretty-print` prefix before proxying.

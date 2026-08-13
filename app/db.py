@@ -67,6 +67,13 @@ async def get_document(conn: aiosqlite.Connection, doc_id: int) -> dict | None:
     return dict(rows[0]) if rows else None
 
 
+async def delete_document(conn: aiosqlite.Connection, doc_id: int) -> bool:
+    """Delete a document from history. Returns True if a row was removed."""
+    cur = await conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+    await conn.commit()
+    return cur.rowcount > 0
+
+
 async def list_documents(conn: aiosqlite.Connection, limit: int = 50) -> list[dict]:
     rows = await conn.execute_fetchall(
         "SELECT id, url, title, source, content_type, status, created_at"

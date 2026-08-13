@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = 20
     rate_limit_window_seconds: int = 60
 
+    # Admin section. ADMIN_PASSWORD gates /admin; SESSION_SECRET signs the
+    # login cookie (falls back to ADMIN_PASSWORD if unset so a fresh checkout
+    # runs, but set a stable SESSION_SECRET in .env — without it every restart
+    # logs the admin out).
+    admin_password: str = ""
+    session_secret: str = ""
+
 
 def get_settings() -> Settings:
     # Not cached: this app runs a single gunicorn worker and Settings() is cheap

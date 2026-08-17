@@ -92,6 +92,31 @@ def test_print_rate_limited_per_ip(client, fake_fetcher, monkeypatch):
     assert "Too many requests" in resp.text
 
 
+def test_rate_limit_honors_x_forwarded_for(client, fake_fetcher, monkeypatch):
+    """Two distinct X-Forwarded-For values must get independent rate-limit
+    buckets, proving the client IP is read from the proxy header rather than
+    falling back to a single shared value (e.g. the test transport's socket
+    peer, which is the same for every request)."""
+    monkeypatch.setenv("RATE_LIMIT_PER_MINUTE", "2")
+    fake_fetcher()
+
+    def _print_as(ip, url):
+        return client.post(
+            "/print",
+            data={"url": url},
+            headers={"X-Forwarded-For": ip},
+            follow_redirects=False,
+        )
+
+    # Exhaust the limit for 1.1.1.1.
+    assert _print_as("1.1.1.1", "https://example.com/1").status_code == 303
+    assert _print_as("1.1.1.1", "https://example.com/2").status_code == 303
+    assert _print_as("1.1.1.1", "https://example.com/3").status_code == 429
+
+    # A different forwarded IP still has a fresh bucket.
+    assert _print_as("2.2.2.2", "https://example.com/4").status_code == 303
+
+
 def test_history_lists_saved_docs(client, fake_fetcher):
     fake_fetcher()
     _print_one(client)

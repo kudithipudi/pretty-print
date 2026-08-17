@@ -15,6 +15,12 @@ MAX_HISTORY_ITEMS = 100
 
 
 def _client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip
     return request.client.host if request.client else "unknown"
 
 

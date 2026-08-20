@@ -6,14 +6,14 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.config import get_settings
-from app.db import (delete_document, get_db, list_documents)
+from app.db import (count_documents, delete_document, get_db, list_documents)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin")
 templates = Jinja2Templates(directory="app/templates")
 templates.env.globals["prefix"] = get_settings().root_path
 
-MAX_HISTORY_ITEMS = 100
+PAGE_SIZE = 50
 
 
 def _is_admin(request: Request) -> bool:
@@ -57,10 +57,16 @@ async def logout(request: Request):
 async def admin_page(request: Request, db=Depends(get_db)):
     if not _is_admin(request):
         return RedirectResponse(f"{get_settings().root_path}/admin/login", status_code=303)
-    docs = await list_documents(db, limit=MAX_HISTORY_ITEMS)
+    total = await count_documents(db)
+    total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+    try:
+        page = max(1, min(int(request.query_params.get("page", "1")), total_pages))
+    except (TypeError, ValueError):
+        page = 1
+    docs = await list_documents(db, limit=PAGE_SIZE, offset=(page - 1) * PAGE_SIZE)
     deleted = 1 if request.query_params.get("deleted") == "1" else 0
     return templates.TemplateResponse(
-        request, "admin.html", {"docs": docs, "deleted": deleted}
+        request, "admin.html", {"docs": docs, "deleted": deleted, "page": page, "total_pages": total_pages}
     )
 
 

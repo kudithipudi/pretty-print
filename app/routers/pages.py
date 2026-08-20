@@ -3,15 +3,15 @@ from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.config import get_settings
-from app.db import (check_and_record_rate_limit, get_document, get_db,
-                     list_documents, save_document)
+from app.db import (check_and_record_rate_limit, count_documents, get_document,
+                     get_db, list_documents, save_document)
 from app.services.fetcher import FetchError, fetch_and_normalize
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 templates.env.globals["prefix"] = get_settings().root_path
 
-MAX_HISTORY_ITEMS = 100
+PAGE_SIZE = 50
 
 
 def _client_ip(request: Request) -> str:
@@ -103,8 +103,16 @@ async def print_view(request: Request, doc_id: int, db=Depends(get_db)):
 
 @router.get("/history")
 async def history(request: Request, db=Depends(get_db)):
-    docs = await list_documents(db, limit=MAX_HISTORY_ITEMS)
-    return templates.TemplateResponse(request, "history.html", {"docs": docs})
+    total = await count_documents(db)
+    total_pages = max(1, (total + PAGE_SIZE - 1) // PAGE_SIZE)
+    try:
+        page = max(1, min(int(request.query_params.get("page", "1")), total_pages))
+    except (TypeError, ValueError):
+        page = 1
+    docs = await list_documents(db, limit=PAGE_SIZE, offset=(page - 1) * PAGE_SIZE)
+    return templates.TemplateResponse(
+        request, "history.html", {"docs": docs, "page": page, "total_pages": total_pages}
+    )
 
 
 @router.get("/healthz")

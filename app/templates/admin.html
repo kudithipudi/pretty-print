@@ -3,7 +3,7 @@
 {% block body %}
 <section class="max-w-4xl mx-auto w-full">
   <div class="flex items-center justify-between mb-4">
-    <h1 class="text-2xl font-bold tracking-tight text-slate-900">Admin</h1>
+    <h1 class="text-2xl font-bold tracking-tight text-slate-900 text-balance">Admin</h1>
     <div class="flex items-center gap-3">
       <a href="{{ prefix }}/history" class="text-sm font-medium text-indigo-600 hover:text-indigo-500">Public history</a>
       <form method="post" action="{{ prefix }}/admin/logout">
@@ -41,7 +41,7 @@
             <td class="px-4 py-3 hidden sm:table-cell">
               <span class="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">{{ doc.source }}</span>
             </td>
-            <td class="px-4 py-3 hidden md:table-cell text-xs text-slate-400">{{ doc.created_at }}</td>
+            <td class="px-4 py-3 hidden md:table-cell text-xs text-slate-400"><time class="tabular-nums" datetime="{{ doc.created_at }}">{{ doc.created_at }}</time></td>
             <td class="px-4 py-3 text-right">
               <form method="post" action="{{ prefix }}/admin/delete/{{ doc.id }}"
                 onsubmit="return confirm('Delete this document from history?');">
@@ -55,6 +55,21 @@
         </tbody>
       </table>
     </div>
+    {% if total_pages > 1 %}
+    <nav class="mt-4 flex items-center justify-between gap-4 text-sm" aria-label="History pages">
+      {% if page > 1 %}
+      <a href="{{ prefix }}/admin?page={{ page - 1 }}" class="font-medium text-indigo-600 hover:text-indigo-500"><span aria-hidden="true">&larr;</span> Newer</a>
+      {% else %}
+      <span></span>
+      {% endif %}
+      <span class="text-xs text-slate-400">Page {{ page }} of {{ total_pages }}</span>
+      {% if page < total_pages %}
+      <a href="{{ prefix }}/admin?page={{ page + 1 }}" class="font-medium text-indigo-600 hover:text-indigo-500">Older <span aria-hidden="true">&rarr;</span></a>
+      {% else %}
+      <span></span>
+      {% endif %}
+    </nav>
+    {% endif %}
     {% else %}
     <p class="text-slate-500 text-sm">Nothing in history to delete.</p>
     {% endif %}

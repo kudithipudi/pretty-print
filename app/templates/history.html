@@ -3,8 +3,8 @@
 {% block body %}
 <section class="max-w-4xl mx-auto w-full">
   <div class="flex items-center justify-between mb-4">
-    <h1 class="text-2xl font-bold tracking-tight text-slate-900">History</h1>
-    <a href="{{ prefix }}/" class="text-sm font-medium text-indigo-600 hover:text-indigo-500">&larr; New print</a>
+    <h1 class="text-2xl font-bold tracking-tight text-slate-900 text-balance">History</h1>
+    <a href="{{ prefix }}/" class="text-sm font-medium text-indigo-600 hover:text-indigo-500"><span aria-hidden="true">&larr;</span> New print</a>
   </div>
 
   {% if docs %}
@@ -30,7 +30,7 @@
           <td class="px-4 py-3 hidden sm:table-cell">
             <span class="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500">{{ doc.source }}</span>
           </td>
-          <td class="px-4 py-3 hidden md:table-cell text-xs text-slate-400">{{ doc.created_at }}</td>
+          <td class="px-4 py-3 hidden md:table-cell text-xs text-slate-400"><time class="tabular-nums" datetime="{{ doc.created_at }}">{{ doc.created_at }}</time></td>
           <td class="px-4 py-3 text-right">
             <a href="{{ prefix }}/d/{{ doc.id }}" class="inline-flex rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:border-indigo-500 hover:text-indigo-600">
               Open
@@ -41,6 +41,21 @@
       </tbody>
     </table>
   </div>
+  {% if total_pages > 1 %}
+  <nav class="mt-4 flex items-center justify-between gap-4 text-sm" aria-label="History pages">
+    {% if page > 1 %}
+    <a href="{{ prefix }}/history?page={{ page - 1 }}" class="font-medium text-indigo-600 hover:text-indigo-500"><span aria-hidden="true">&larr;</span> Newer</a>
+    {% else %}
+    <span></span>
+    {% endif %}
+    <span class="text-xs text-slate-400">Page {{ page }} of {{ total_pages }}</span>
+    {% if page < total_pages %}
+    <a href="{{ prefix }}/history?page={{ page + 1 }}" class="font-medium text-indigo-600 hover:text-indigo-500">Older <span aria-hidden="true">&rarr;</span></a>
+    {% else %}
+    <span></span>
+    {% endif %}
+  </nav>
+  {% endif %}
   {% else %}
   <div class="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-16 text-center">
     <p class="text-slate-500">Nothing printed yet.</p>

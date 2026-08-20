@@ -6,6 +6,19 @@
   display: none !important;
 }
 
+@layer base {
+  button,
+  a {
+    touch-action: manipulation;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .transition {
+    transition: none;
+  }
+}
+
 /* Screen preview mirrors the printed page as closely as possible
    (WYSIWYG: what you see on screen is what ink lands on paper). */
 .print-article {

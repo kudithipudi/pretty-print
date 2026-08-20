@@ -74,13 +74,21 @@ async def delete_document(conn: aiosqlite.Connection, doc_id: int) -> bool:
     return cur.rowcount > 0
 
 
-async def list_documents(conn: aiosqlite.Connection, limit: int = 50) -> list[dict]:
+async def list_documents(
+    conn: aiosqlite.Connection, limit: int = 50, offset: int = 0
+) -> list[dict]:
     rows = await conn.execute_fetchall(
         "SELECT id, url, title, source, content_type, status, created_at"
-        " FROM documents ORDER BY id DESC LIMIT ?",
-        (limit,),
+        " FROM documents ORDER BY id DESC LIMIT ? OFFSET ?",
+        (limit, offset),
     )
     return [dict(r) for r in rows]
+
+
+async def count_documents(conn: aiosqlite.Connection) -> int:
+    cur = await conn.execute("SELECT COUNT(*) FROM documents")
+    row = await cur.fetchone()
+    return int(row[0])
 
 
 async def check_and_record_rate_limit(

@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta name="theme-color" content="#f8fafc" />
 <title>{% block title %}pretty-print — turn web pages into print-ready paper{% endblock %}</title>
 <link rel="icon" href="/favicon.ico" />
 <link rel="stylesheet" href="{{ prefix }}/static/css/app.css" />
@@ -10,6 +11,7 @@
 {% block head %}{% endblock %}
 </head>
 <body class="bg-slate-50 text-slate-900 font-sans antialiased">
+<a href="#main" class="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50 focus:rounded-lg focus:bg-indigo-600 focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white">Skip to content</a>
 <div class="min-h-screen bg-slate-50 text-slate-900">
 
   <header class="print:hidden sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200">
@@ -31,7 +33,7 @@
     </div>
   </header>
 
-  <main class="print:hidden max-w-[1100px] mx-auto px-4 sm:px-6 py-8 space-y-8">
+  <main id="main" class="print:hidden max-w-[1100px] mx-auto px-4 sm:px-6 py-8 space-y-8">
     {% block body %}{% endblock %}
   </main>
 
@@ -46,5 +48,13 @@
     </div>
   </footer>
 </div>
+<script>
+  document.querySelectorAll('time[datetime]').forEach(function (el) {
+    var d = new Date(el.getAttribute('datetime'));
+    if (!isNaN(d.getTime())) {
+      el.textContent = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(d);
+    }
+  });
+</script>
 </body>
 </html>

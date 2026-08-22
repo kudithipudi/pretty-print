@@ -1,6 +1,8 @@
 import pytest
-from fastapi.testclient import TestClient
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
 
+from app.db import init_db
 from app.main import app
 from app.services.fetcher import FetchResult
 
@@ -8,9 +10,9 @@ from app.services.fetcher import FetchResult
 TEST_ADMIN_PASSWORD = "test-admin-password"
 
 
-@pytest.fixture
-def client(tmp_path, monkeypatch):
-    """A TestClient wired to a throwaway SQLite db and no Browser-Use key, so
+@pytest_asyncio.fixture
+async def client(tmp_path, monkeypatch):
+    """An AsyncClient wired to a throwaway SQLite db and no Browser-Use key, so
     tests never touch the network."""
     monkeypatch.setenv("DB_PATH", str(tmp_path / "app-test.db"))
     monkeypatch.setenv("BROWSER_USE_API_KEY", "")
@@ -18,22 +20,24 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("ROOT_PATH", "/pretty-print")
     monkeypatch.setenv("ADMIN_PASSWORD", TEST_ADMIN_PASSWORD)
     monkeypatch.setenv("SESSION_SECRET", "test-session-secret")
-    with TestClient(app) as c:
+    # ASGITransport doesn't run lifespan hooks, so apply the schema here.
+    await init_db()
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as c:
         yield c
 
 
-@pytest.fixture
-def anon_client(client):
+@pytest_asyncio.fixture
+async def anon_client(client):
     """A client with no admin session — for exercising what a visitor who
     hasn't logged in can and can't reach."""
     return client
 
 
-@pytest.fixture
-def admin_client(client):
+@pytest_asyncio.fixture
+async def admin_client(client):
     """A client already logged in to /admin (session cookie carries over to
     every subsequent request, same as a real browser)."""
-    resp = client.post(
+    resp = await client.post(
         "/admin/login", data={"password": TEST_ADMIN_PASSWORD}, follow_redirects=False
     )
     assert resp.status_code == 303

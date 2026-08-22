@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     root_path: str = "/pretty-print"
     db_path: str = "data/pretty-print.db"
 
+    # App log verbosity (see §7 of the lab standards): flip via LOG_LEVEL in
+    # .env without touching code.
+    log_level: str = "info"
+
     # Browser Use (browser-use.com) fetch-use SDK. The actual page fetch happens
     # on Browser Use's infrastructure, not this server. Empty -> skipped, the
     # app falls back to a direct httpx fetch.

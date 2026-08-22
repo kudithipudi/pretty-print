@@ -12,7 +12,11 @@ from app.config import get_settings
 from app.db import init_db
 from app.routers import admin, pages
 
-logging.basicConfig(level=logging.INFO)
+settings = get_settings()
+logging.basicConfig(
+    level=settings.log_level.upper(),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
 logger = logging.getLogger(__name__)
 
 
@@ -23,7 +27,6 @@ async def lifespan(app: FastAPI):
     yield
 
 
-settings = get_settings()
 # Ensure the SQLite parent dir exists before the lifespan runs.
 Path(settings.db_path).parent.mkdir(parents=True, exist_ok=True)
 

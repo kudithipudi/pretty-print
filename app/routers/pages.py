@@ -115,6 +115,6 @@ async def history(request: Request, db=Depends(get_db)):
     )
 
 
-@router.get("/healthz")
-async def healthz():
+@router.get("/health")
+async def health():
     return {"status": "ok"}

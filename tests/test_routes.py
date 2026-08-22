@@ -7,42 +7,42 @@ from app.services.fetcher import (FetchError, FetchResult, _fetch_httpx,
 # --- public pages (smoke tests) ------------------------------------------
 
 
-def test_index_ok(client):
-    resp = client.get("/")
+async def test_index_ok(client):
+    resp = await client.get("/")
     assert resp.status_code == 200
     assert "pretty-print" in resp.text
     assert 'name="url"' in resp.text
 
 
-def test_history_ok_empty(client):
-    resp = client.get("/history")
+async def test_history_ok_empty(client):
+    resp = await client.get("/history")
     assert resp.status_code == 200
     assert "History" in resp.text
 
 
-def test_healthz(client):
-    resp = client.get("/healthz")
+async def test_health(client):
+    resp = await client.get("/health")
     assert resp.status_code == 200
     assert resp.json() == {"status": "ok"}
 
 
-def test_unknown_doc_404(client):
-    resp = client.get("/d/99999")
+async def test_unknown_doc_404(client):
+    resp = await client.get("/d/99999")
     assert resp.status_code == 404
 
 
-def test_missing_url_rejected(client):
-    resp = client.post("/print", data={"url": ""}, follow_redirects=False)
+async def test_missing_url_rejected(client):
+    resp = await client.post("/print", data={"url": ""}, follow_redirects=False)
     assert resp.status_code == 400
 
 
-def test_url_validation(client):
-    resp = client.post("/print", data={"url": "not-a-url"}, follow_redirects=False)
+async def test_url_validation(client):
+    resp = await client.post("/print", data={"url": "not-a-url"}, follow_redirects=False)
     assert resp.status_code == 400
 
 
-def _print_one(client, url="https://example.com/article"):
-    return client.post(
+async def _print_one(client, url="https://example.com/article"):
+    return await client.post(
         "/print", data={"url": url}, follow_redirects=False
     )
 
@@ -50,20 +50,20 @@ def _print_one(client, url="https://example.com/article"):
 # --- print flow ----------------------------------------------------------
 
 
-def test_post_print_saves_and_redirects(client, fake_fetcher):
+async def test_post_print_saves_and_redirects(client, fake_fetcher):
     calls = fake_fetcher()
-    resp = _print_one(client)
+    resp = await _print_one(client)
     assert resp.status_code == 303
     assert resp.headers["location"] == "/pretty-print/d/1"
     # The submitted URL must actually reach the fetcher (form parsing).
     assert calls == ["https://example.com/article"]
 
 
-def test_print_view_renders_content(client, fake_fetcher):
+async def test_print_view_renders_content(client, fake_fetcher):
     fake_fetcher()
-    _print_one(client)
+    await _print_one(client)
 
-    resp = client.get("/d/1")
+    resp = await client.get("/d/1")
     assert resp.status_code == 200
     assert "Example Article" in resp.text
     assert "Printable body text" in resp.text
@@ -71,28 +71,28 @@ def test_print_view_renders_content(client, fake_fetcher):
     assert "print:hidden" in resp.text
 
 
-def test_print_paper_param(client, fake_fetcher):
+async def test_print_paper_param(client, fake_fetcher):
     fake_fetcher()
-    _print_one(client)
+    await _print_one(client)
 
-    assert "size: A4" in client.get("/d/1").text
-    assert "size: Letter" in client.get("/d/1?paper=letter").text
+    assert "size: A4" in (await client.get("/d/1")).text
+    assert "size: Letter" in (await client.get("/d/1?paper=letter")).text
     # Bogus value falls back to A4.
-    assert "size: A4" in client.get("/d/1?paper=weird").text
+    assert "size: A4" in (await client.get("/d/1?paper=weird")).text
 
 
-def test_print_rate_limited_per_ip(client, fake_fetcher, monkeypatch):
+async def test_print_rate_limited_per_ip(client, fake_fetcher, monkeypatch):
     monkeypatch.setenv("RATE_LIMIT_PER_MINUTE", "2")
     fake_fetcher()
 
-    assert _print_one(client, "https://example.com/1").status_code == 303
-    assert _print_one(client, "https://example.com/2").status_code == 303
-    resp = _print_one(client, "https://example.com/3")
+    assert (await _print_one(client, "https://example.com/1")).status_code == 303
+    assert (await _print_one(client, "https://example.com/2")).status_code == 303
+    resp = await _print_one(client, "https://example.com/3")
     assert resp.status_code == 429
     assert "Too many requests" in resp.text
 
 
-def test_rate_limit_honors_x_forwarded_for(client, fake_fetcher, monkeypatch):
+async def test_rate_limit_honors_x_forwarded_for(client, fake_fetcher, monkeypatch):
     """Two distinct X-Forwarded-For values must get independent rate-limit
     buckets, proving the client IP is read from the proxy header rather than
     falling back to a single shared value (e.g. the test transport's socket
@@ -100,8 +100,8 @@ def test_rate_limit_honors_x_forwarded_for(client, fake_fetcher, monkeypatch):
     monkeypatch.setenv("RATE_LIMIT_PER_MINUTE", "2")
     fake_fetcher()
 
-    def _print_as(ip, url):
-        return client.post(
+    async def _print_as(ip, url):
+        return await client.post(
             "/print",
             data={"url": url},
             headers={"X-Forwarded-For": ip},
@@ -109,32 +109,32 @@ def test_rate_limit_honors_x_forwarded_for(client, fake_fetcher, monkeypatch):
         )
 
     # Exhaust the limit for 1.1.1.1.
-    assert _print_as("1.1.1.1", "https://example.com/1").status_code == 303
-    assert _print_as("1.1.1.1", "https://example.com/2").status_code == 303
-    assert _print_as("1.1.1.1", "https://example.com/3").status_code == 429
+    assert (await _print_as("1.1.1.1", "https://example.com/1")).status_code == 303
+    assert (await _print_as("1.1.1.1", "https://example.com/2")).status_code == 303
+    assert (await _print_as("1.1.1.1", "https://example.com/3")).status_code == 429
 
     # A different forwarded IP still has a fresh bucket.
-    assert _print_as("2.2.2.2", "https://example.com/4").status_code == 303
+    assert (await _print_as("2.2.2.2", "https://example.com/4")).status_code == 303
 
 
-def test_history_lists_saved_docs(client, fake_fetcher):
+async def test_history_lists_saved_docs(client, fake_fetcher):
     fake_fetcher()
-    _print_one(client)
-    _print_one(client)
+    await _print_one(client)
+    await _print_one(client)
 
-    resp = client.get("/history")
+    resp = await client.get("/history")
     assert resp.status_code == 200
     assert resp.text.count("Example Article") >= 2
 
 
-def test_fetch_error_rerenders_home(client, fake_fetcher):
+async def test_fetch_error_rerenders_home(client, fake_fetcher):
     fake_fetcher(exc=FetchError("upstream blocked us"))
-    resp = _print_one(client)
+    resp = await _print_one(client)
     assert resp.status_code == 400
     assert "upstream blocked us" in resp.text
 
 
-def test_text_content_rendered(client, fake_fetcher):
+async def test_text_content_rendered(client, fake_fetcher):
     result = FetchResult(
         final_url="https://example.com/notes.txt",
         title="",
@@ -143,14 +143,14 @@ def test_text_content_rendered(client, fake_fetcher):
         content="<pre class=\"print-text\">raw text line1\nline2</pre>",
     )
     fake_fetcher(result=result)
-    _print_one(client, "https://example.com/notes.txt")
+    await _print_one(client, "https://example.com/notes.txt")
 
-    resp = client.get("/d/1")
+    resp = await client.get("/d/1")
     assert resp.status_code == 200
     assert "raw text line1" in resp.text
 
 
-def test_title_falls_back_to_url(client, fake_fetcher):
+async def test_title_falls_back_to_url(client, fake_fetcher):
     result = FetchResult(
         final_url="https://example.com/notes.txt",
         title="",
@@ -159,9 +159,9 @@ def test_title_falls_back_to_url(client, fake_fetcher):
         content="<pre class=\"print-text\">hello</pre>",
     )
     fake_fetcher(result=result)
-    _print_one(client, "https://example.com/notes.txt")
+    await _print_one(client, "https://example.com/notes.txt")
 
-    resp = client.get("/d/1")
+    resp = await client.get("/d/1")
     assert "https://example.com/notes.txt" in resp.text
 
 

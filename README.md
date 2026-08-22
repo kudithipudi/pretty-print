@@ -84,6 +84,22 @@ location /pretty-print/ {
 | `RATE_LIMIT_WINDOW_SECONDS` | `60` | Trailing window (seconds) the cap above applies over. |
 | `ADMIN_PASSWORD` | *(empty)* | Password for the `/admin` section (delete history, etc.). Empty disables admin login. |
 | `SESSION_SECRET` | *(empty)* | Signs the admin session cookie; falls back to `ADMIN_PASSWORD`. Set a stable value — without it every restart logs the admin out. |
+| `LOG_LEVEL` | `info` | App log verbosity (`debug`/`info`/`warning`/...). |
+
+## Logs
+
+Logs live in local files under `app/logs/`, not journald:
+
+- `app/logs/access.log` — gunicorn's access log, one line per HTTP request
+  (timestamp, client IP, request line, status, bytes, duration).
+- `app/logs/app.log` — gunicorn's error/boot output plus everything the app
+  emits via the standard `logging` module. Verbosity follows `LOG_LEVEL`
+  (default `info`; flip to `debug` in `.env` without touching code).
+
+Rotation is handled by the host-level `/etc/logrotate.d/lab-apps` policy, not
+per-app. A crash before gunicorn opens its log files still surfaces in
+journald (`journalctl -u pretty-print`) — look there first if the unit won't
+start at all.
 
 ## Rebuilding Tailwind CSS
 

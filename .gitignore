@@ -3,25 +3,24 @@ __pycache__/
 *.pyc
 *.sock
 data/
-*.log
+app/logs/*
+!app/logs/.gitkeep
 .env
 htmlcov/
 .pytest_cache/
 tailwindcss
 
 # graft's local graph cache — regenerable, not committed (run `graft build`).
+# The graft wiring itself (AGENTS.md, opencode.json, .mcp.json, .claude/) IS
+# committed so teammates share it.
 graft/
 
 # AI assistant / local tooling config (not project code)
 CLAUDE.md
 claude.md
-AGENTS.md
 agents.md
-opencode.json
 opencode.jsonc
-.mcp.json
 .ignore
-.claude/
 .cursor/
 .cursorrules
 .windsurfrules
